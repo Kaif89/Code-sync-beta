@@ -1,4 +1,5 @@
-#CodeSync – Real-Time Collaborative Code Editor
+<h1>CodeSync – Real-Time Collaborative Code Editor</h1>
+
 
 CodeSync is a real-time collaborative code editor designed for instant coding sessions, multi-language support, and built-in live chat. No signup required — just create a room and start coding together instantly.
 🚀 Features
