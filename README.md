@@ -84,6 +84,8 @@ text
 VITE_SUPABASE_URL=<your-supabase-url>
 VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
 
+
+
 Run the development server
 
     bash
