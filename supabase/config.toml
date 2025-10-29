@@ -1,0 +1,4 @@
+project_id = "tbylzyivkgifrldbuoji"
+
+[functions.execute-code]
+verify_jwt = false
