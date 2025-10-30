@@ -1,0 +1,4 @@
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y clangd
+EXPOSE 8082
+CMD ["clangd", "--enable-config", "--compile-commands-dir=/workspace", "--header-insertion=never"]

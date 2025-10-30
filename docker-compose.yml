@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  pylsp:
+    build:
+      context: .
+      dockerfile: Dockerfile.pylsp
+    ports:
+      - "2087:2087"
+
+  clangd:
+    build:
+      context: .
+      dockerfile: Dockerfile.clangd
+    ports:
+      - "8082:8082"
+
+  gopls:
+    build:
+      context: .
+      dockerfile: Dockerfile.gopls
+    ports:
+      - "8083:8083"
+
+  jdtls:
+    build:
+      context: .
+      dockerfile: Dockerfile.jdtls
+    ports:
+      - "8084:8084"
+
+  rust_analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust-analyzer
+    ports:
+      - "8085:8085"
+
+  lsp-ws-proxy:
+    image: node:18
+    working_dir: /usr/app
+    volumes:
+      - .:/usr/app
+    command: >
+      npx lsp-ws-proxy --port 3000 \
+      --languages \
+        pylsp:tcp://pylsp:2087 \
+        clangd:tcp://clangd:8082 \
+        gopls:tcp://gopls:8083 \
+        jdtls:tcp://jdtls:8084 \
+        rust-analyzer:tcp://rust_analyzer:8085
+    ports:
+      - "3000:3000"
+    depends_on:
+      - pylsp
+      - clangd
+      - gopls
+      - jdtls
+      - rust_analyzer

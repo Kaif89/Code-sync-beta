@@ -1,0 +1,4 @@
+FROM golang:1.24
+RUN go install golang.org/x/tools/gopls@latest
+EXPOSE 8083
+CMD ["gopls", "serve", "-listen", "0.0.0.0:8083"]

@@ -3,15 +3,16 @@ import { corsHeaders } from '../_shared/cors.ts';
 const PISTON_API = 'https://emkc.org/api/v2/piston';
 
 // Language mapping to Piston API format
-const languageMap: Record<string, { language: string; version: string }> = {
-  javascript: { language: 'javascript', version: '18.15.0' },
-  typescript: { language: 'typescript', version: '5.0.3' },
-  python: { language: 'python', version: '3.10.0' },
-  java: { language: 'java', version: '15.0.2' },
-  cpp: { language: 'c++', version: '10.2.0' },
-  go: { language: 'go', version: '1.16.2' },
-  rust: { language: 'rust', version: '1.68.2' },
-  php: { language: 'php', version: '8.2.3' },
+const languageMap: Record<string, { language: string; version: string; filename: string }> = {
+  javascript: { language: 'javascript', version: '18.15.0', filename: 'main.js' },
+  typescript: { language: 'typescript', version: '5.0.3', filename: 'main.ts' },
+  python: { language: 'python', version: '3.10.0', filename: 'main.py' },
+  java: { language: 'java', version: '15.0.2', filename: 'Main.java' },
+  cpp: { language: 'c++', version: '10.2.0', filename: 'main.cpp' },
+  c: { language: 'c', version: '10.2.0', filename: 'main.c' },
+  go: { language: 'go', version: '1.16.2', filename: 'main.go' },
+  rust: { language: 'rust', version: '1.68.2', filename: 'main.rs' },
+  php: { language: 'php', version: '8.2.3', filename: 'main.php' },
 };
 
 Deno.serve(async (req) => {
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
         version: pistonLanguage.version,
         files: [
           {
-            name: 'main',
+            name: pistonLanguage.filename,
             content: code,
           },
         ],
@@ -87,16 +88,15 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error('Error executing code:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to execute code';
+    console.error(error);
     return new Response(
-      JSON.stringify({ 
-        error: errorMessage,
-        details: String(error)
+      JSON.stringify({
+        error: error?.message || 'Unknown error',
+        details: (typeof error === 'object' && error !== null) ? JSON.stringify(error) : String(error)
       }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
   }

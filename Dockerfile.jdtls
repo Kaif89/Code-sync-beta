@@ -1,0 +1,6 @@
+FROM eclipse-temurin:17-jdk
+WORKDIR /app
+RUN apt-get update && apt-get install -y wget unzip && \
+    wget -qO- "https://download.eclipse.org/jdtls/milestones/1.29.0/jdt-language-server-1.29.0-202403141311.tar.gz" | tar xz
+EXPOSE 8084
+CMD ["java", "-Declipse.application=org.eclipse.jdt.ls.core.id1", "-Dosgi.bundles.defaultStartLevel=4", "-Declipse.product=org.eclipse.jdt.ls.core.product", "-Dlog.level=ALL", "-noverify", "-Xmx1G", "-jar", "/app/plugins/org.eclipse.equinox.launcher_1.6.800.v20240330-1256.jar", "-configuration", "/app/config_linux", "--stdio"]

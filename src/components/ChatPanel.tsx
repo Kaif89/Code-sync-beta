@@ -59,7 +59,23 @@ export default function ChatPanel({
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          setMessages((current) => [...current, payload.new as ChatMessage]);
+          setMessages((current) => {
+            // Remove any optimistic message that matches (same user, message, close timestamp)
+            const dbMsg = payload.new as ChatMessage;
+            return [
+              ...current.filter(
+                (msg) =>
+                  !msg._optimistic ||
+                  !(
+                    msg.user_name === dbMsg.user_name &&
+                    msg.message === dbMsg.message &&
+                    Math.abs(new Date(msg.created_at).getTime() - new Date(dbMsg.created_at).getTime()) < 2000 // 2s window
+                  )
+              ),
+              dbMsg,
+            ].filter((msg, i, arr) => arr.findIndex(m2 => m2.id === msg.id) === i) // no exact duplicate ids
+              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          });
         }
       )
       .subscribe();
@@ -80,6 +96,19 @@ export default function ChatPanel({
     e.preventDefault();
     
     if (!newMessage.trim()) return;
+
+    // Optimistic local update
+    const now = new Date();
+    const isoNow = now.toISOString();
+    const optimisticMsg = {
+      id: `optimistic-${now.getTime()}-${Math.random()}`,
+      user_name: currentUserName,
+      user_color: currentUserColor,
+      message: newMessage.trim(),
+      created_at: isoNow,
+      _optimistic: true,
+    } as any;
+    setMessages((current) => [...current, optimisticMsg]);
 
     await supabase.from("chat_messages").insert({
       room_id: roomId,
