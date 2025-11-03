@@ -3,13 +3,30 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Editor, { OnMount } from "@monaco-editor/react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Code2, Users, Wifi, WifiOff, Play, MessageSquare, Terminal, Moon, Sun } from "lucide-react";
+import {
+  Code2,
+  Users,
+  Wifi,
+  WifiOff,
+  Play,
+  MessageSquare,
+  Terminal,
+  Moon,
+  Sun,
+} from "lucide-react";
 import { toast } from "sonner";
 import ChatPanel from "@/components/ChatPanel";
 import OutputPanel from "@/components/OutputPanel";
+import { languageServerManager } from "@/lib/languageServer";
 
 interface User {
   id: string;
@@ -42,7 +59,7 @@ export default function EditorPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const roomId = searchParams.get("room");
-  
+
   const [code, setCode] = useState("// Start coding together!\n\n");
   const [language, setLanguage] = useState("javascript");
   const [users, setUsers] = useState<User[]>([]);
@@ -51,12 +68,12 @@ export default function EditorPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [isError, setIsError] = useState(false);
   const [userName, setUserName] = useState(() => {
-    const param = searchParams.get('name');
+    const param = searchParams.get("name");
     if (param && param.trim()) {
-      localStorage.setItem('username', param.trim());
+      localStorage.setItem("username", param.trim());
       return param.trim();
     }
-    return localStorage.getItem('username') || '';
+    return localStorage.getItem("username") || "";
   });
 
   // If not set, overlay an input so user MUST enter their name before editing/collaborating.
@@ -69,26 +86,26 @@ export default function EditorPage() {
     }
 
     if (userName.trim()) {
-      localStorage.setItem('username', userName);
+      localStorage.setItem("username", userName);
       setNameEntered(true);
     } else {
       setNameEntered(false);
     }
   }, [userName]);
-  
+
   const [currentUser] = useState({
     id: crypto.randomUUID(),
     name: userName || `User ${Math.floor(Math.random() * 1000)}`,
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
   });
-  
-  const channelRef = useRef<any>(null);
+
+  const channelRef = useRef<unknown>(null);
   // Add theme selector state
   const [editorTheme, setEditorTheme] = useState("vs-dark");
   const toggleTheme = () => {
-    setEditorTheme(theme => (theme === "vs-dark" ? "vs-light" : "vs-dark"));
+    setEditorTheme((theme) => (theme === "vs-dark" ? "vs-light" : "vs-dark"));
   };
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<unknown>(null);
 
   useEffect(() => {
     if (!roomId) {
@@ -97,13 +114,13 @@ export default function EditorPage() {
     }
 
     const channel = supabase.channel(`room:${roomId}`);
-    channelRef.current = channel;
+    channelRef.current = channel as any;
 
     channel
       .on("presence", { event: "sync" }, () => {
         const state: PresenceState = channel.presenceState();
         const activeUsers: User[] = [];
-        
+
         Object.values(state).forEach((presences) => {
           presences.forEach((presence) => {
             activeUsers.push({
@@ -113,7 +130,7 @@ export default function EditorPage() {
             });
           });
         });
-        
+
         setUsers(activeUsers);
       })
       .on("broadcast", { event: "code-change" }, ({ payload }) => {
@@ -147,7 +164,7 @@ export default function EditorPage() {
   const handleCodeChange = (value: string | undefined) => {
     if (value !== undefined && channelRef.current) {
       setCode(value);
-      channelRef.current.send({
+      (channelRef.current as any).send({
         type: "broadcast",
         event: "code-change",
         payload: { code: value, userId: currentUser.id },
@@ -158,12 +175,15 @@ export default function EditorPage() {
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
     if (channelRef.current) {
-      channelRef.current.send({
+      (channelRef.current as any).send({
         type: "broadcast",
         event: "language-change",
         payload: { language: newLanguage, userId: currentUser.id },
       });
     }
+
+    // Initialize language server for the new language
+    languageServerManager.initializeLanguageServer(newLanguage);
   };
 
   const handleRunCode = async () => {
@@ -180,7 +200,9 @@ export default function EditorPage() {
 
       if (data.error) {
         setOutput(
-          `Code not executed.\nError: ${data.error}${data.details ? `\n\n${data.details}` : ""}`
+          `Code not executed.\nError: ${data.error}${
+            data.details ? `\n\n${data.details}` : ""
+          }`
         );
         setIsError(true);
         toast.error("Code execution failed");
@@ -189,7 +211,9 @@ export default function EditorPage() {
           .filter(Boolean)
           .join("\n");
         // Remove duplicate outputs if present
-        const uniqueOutputs = Array.from(new Set(combinedOutput.split("\n"))).join("\n");
+        const uniqueOutputs = Array.from(
+          new Set(combinedOutput.split("\n"))
+        ).join("\n");
         setOutput(uniqueOutputs || "No output produced");
         setIsError(false);
         toast.success("Code executed successfully");
@@ -213,7 +237,7 @@ export default function EditorPage() {
     try {
       const text = await navigator.clipboard.readText();
       if (!text) return;
-      const editor = editorRef.current;
+      const editor = editorRef.current as any;
       const selection = editor.getSelection();
       editor.executeEdits("paste", [
         {
@@ -229,9 +253,9 @@ export default function EditorPage() {
   };
 
   // Register context menu action when editor loads
-  const handleEditorMount = (editor: any, monaco: any) => {
-    editorRef.current = editor;
-    editor.addAction({
+  const handleEditorMount = (editor: unknown, monaco: unknown) => {
+    editorRef.current = editor as any;
+    (editor as any).addAction({
       id: "paste-action",
       label: "Paste",
       keybindings: [],
@@ -239,6 +263,9 @@ export default function EditorPage() {
       contextMenuOrder: 2,
       run: handlePaste,
     });
+
+    // Initialize language server for the current language
+    languageServerManager.initializeLanguageServer(language);
   };
 
   return (
@@ -254,8 +281,10 @@ export default function EditorPage() {
                 className="block w-full px-4 py-3 rounded-lg border border-border text-lg focus:outline-none"
                 placeholder="Your Name"
                 value={userName}
-                onChange={e => setUserName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && userName.trim() && setNameEntered(true)}
+                onChange={(e) => setUserName(e.target.value)}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && userName.trim() && setNameEntered(true)
+                }
               />
               <Button
                 className="w-full py-3"
@@ -293,7 +322,9 @@ export default function EditorPage() {
           </div>
           <div className="flex items-center gap-6">
             <span className="text-sm font-medium text-muted-foreground">
-              <span className="bg-secondary/80 py-1 px-3 rounded-lg">👤 {userName}</span>
+              <span className="bg-secondary/80 py-1 px-3 rounded-lg">
+                👤 {userName}
+              </span>
             </span>
             <Select value={language} onValueChange={handleLanguageChange}>
               <SelectTrigger className="w-40">
@@ -308,8 +339,8 @@ export default function EditorPage() {
               </SelectContent>
             </Select>
 
-            <Button 
-              onClick={handleRunCode} 
+            <Button
+              onClick={handleRunCode}
               disabled={isRunning}
               className="gap-2"
             >
@@ -318,8 +349,21 @@ export default function EditorPage() {
             </Button>
 
             <div className="flex gap-2 mb-2">
-              <Button onClick={toggleTheme} variant="outline" size="icon" aria-label={editorTheme === "vs-dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}>
-                {editorTheme === "vs-dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              <Button
+                onClick={toggleTheme}
+                variant="outline"
+                size="icon"
+                aria-label={
+                  editorTheme === "vs-dark"
+                    ? "Switch to Light Mode"
+                    : "Switch to Dark Mode"
+                }
+              >
+                {editorTheme === "vs-dark" ? (
+                  <Sun className="w-5 h-5" />
+                ) : (
+                  <Moon className="w-5 h-5" />
+                )}
               </Button>
             </div>
 
@@ -366,7 +410,7 @@ export default function EditorPage() {
                   Chat
                 </TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="users" className="flex-1 flex flex-col m-0">
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center gap-2">
@@ -394,7 +438,9 @@ export default function EditorPage() {
                       <span className="text-sm font-medium truncate">
                         {user.name}
                         {user.id === currentUser.id && (
-                          <span className="text-xs text-muted-foreground ml-2">(You)</span>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (You)
+                          </span>
                         )}
                       </span>
                     </div>
@@ -425,7 +471,11 @@ export default function EditorPage() {
 
         {/* Output Panel */}
         <div className="h-48">
-          <OutputPanel output={output} isError={isError} isLoading={isRunning} />
+          <OutputPanel
+            output={output}
+            isError={isError}
+            isLoading={isRunning}
+          />
         </div>
       </div>
     </div>

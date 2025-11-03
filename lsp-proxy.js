@@ -1,0 +1,180 @@
+import express from "express";
+import net from "net";
+import { createConnection, ProposedFeatures } from "vscode-languageserver/node.js";
+
+const app = express();
+app.use(express.json());
+
+// Map of language server names to their host:port
+const languageServers = {
+  pylsp: { host: 'pylsp', port: 8081 },
+  clangd: { host: 'clangd', port: 8082 },
+  gopls: { host: 'gopls', port: 8083 },
+  jdtls: { host: 'jdtls', port: 8084 },
+  'rust-analyzer': { host: 'rust_analyzer', port: 8085 }
+};
+
+const activeConnections = new Map();
+
+// Create connection to language server
+function createLanguageServerConnection(host, port) {
+  const socket = new net.Socket();
+
+  return new Promise((resolve, reject) => {
+    console.log(`Attempting to connect to ${host}:${port}`);
+
+    socket.on('error', (err) => {
+      console.error(`Socket error for ${host}:${port}:`, err);
+      reject(err);
+    });
+
+    socket.on('close', (hadError) => {
+      console.log(`Socket closed for ${host}:${port}, hadError: ${hadError}`);
+    });
+
+    socket.on('connect', async () => {
+      console.log(`Socket connected to ${host}:${port}`);
+
+      const connection = createConnection(
+        ProposedFeatures.all,
+        socket,
+        socket
+      );
+
+      connection.onNotification((method, params) => {
+        console.log(`Received notification from ${host}:${port}:`, { method, params });
+      });
+
+      connection.onRequest((method, params) => {
+        console.log(`Received request from ${host}:${port}:`, { method, params });
+      });
+
+      connection.listen();
+
+      console.log(`Starting LSP connection for ${host}:${port}`);
+
+      try {
+        // Send initialize request
+        console.log(`Sending initialize request to ${host}:${port}`);
+        const initializeResult = await connection.sendRequest('initialize', {
+          processId: process.pid,
+          rootUri: 'file:///',
+          capabilities: {
+            textDocument: {
+              completion: {
+                dynamicRegistration: true,
+                completionItem: {
+                  snippetSupport: true,
+                  commitCharactersSupport: true,
+                  documentationFormat: ['plaintext', 'markdown'],
+                  deprecatedSupport: true,
+                  preselectSupport: true
+                },
+                contextSupport: true
+              }
+            }
+          },
+          workspaceFolders: [{
+            name: 'root',
+            uri: 'file:///'
+          }]
+        });
+        console.log(`Initialize response from ${host}:${port}:`, JSON.stringify(initializeResult, null, 2));
+
+        // Send initialized notification
+        console.log(`Sending initialized notification to ${host}:${port}`);
+        await connection.sendNotification('initialized');
+        console.log(`Initialized notification sent to ${host}:${port}`);
+
+        resolve({ connection, socket });
+      } catch (error) {
+        console.error(`Failed to initialize connection to ${host}:${port}:`, error);
+        reject(error);
+      }
+    });
+
+    console.log(`Connecting socket to ${host}:${port}`);
+    socket.connect(port, host);
+  });
+}
+
+// Initialize connection if needed
+async function ensureConnection(serverName) {
+  let serverInfo = activeConnections.get(serverName);
+
+  if (!serverInfo) {
+    try {
+      const { host, port } = languageServers[serverName];
+      console.log(`Connecting to ${serverName} at ${host}:${port}`);
+
+      const { connection, socket } = await createLanguageServerConnection(host, port);
+      serverInfo = { connection, socket };
+      activeConnections.set(serverName, serverInfo);
+    } catch (error) {
+      console.error(`Failed to connect to ${serverName}:`, error);
+      throw error;
+    }
+  }
+
+  return serverInfo;
+}
+
+// Handle completion requests for each language server
+Object.keys(languageServers).forEach((serverName) => {
+  app.post(`/${serverName}/completion`, async (req, res) => {
+    try {
+      console.log(`Received completion request for ${serverName}`);
+      console.log('Request body:', JSON.stringify(req.body, null, 2));
+
+      // Ensure we have a connection
+      console.log(`Ensuring connection to ${serverName}`);
+      const { connection } = await ensureConnection(serverName);
+      console.log(`Got connection for ${serverName}`);
+
+      // Send didOpen notification for the document
+      await connection.sendNotification('textDocument/didOpen', {
+        textDocument: {
+          uri: req.body.textDocument.uri,
+          languageId: req.body.textDocument.languageId || 'python',
+          version: 1,
+          text: ''
+        }
+      });
+
+      // Send completion request
+      console.log(`Sending completion request to ${serverName}`);
+      const completions = await connection.sendRequest('textDocument/completion', req.body);
+      console.log(`Got completions from ${serverName}:`, JSON.stringify(completions, null, 2));
+
+      res.json({ items: completions.items || [] });
+    } catch (error) {
+      console.error(`Error in ${serverName} completion:`, error);
+      if (error.stack) {
+        console.error('Stack trace:', error.stack);
+      }
+      res.status(500).json({ error: `Language server error: ${error.message}` });
+    }
+  });
+});
+
+// Handle errors and cleanup
+process.on('exit', () => {
+  // Cleanup all connections
+  for (const [serverName, { connection, socket }] of activeConnections.entries()) {
+    try {
+      connection.sendRequest('shutdown');
+      connection.dispose();
+      socket.destroy();
+    } catch (error) {
+      console.error(`Error shutting down ${serverName}:`, error);
+    }
+  }
+});
+
+process.on('SIGINT', () => {
+  process.exit(0);
+});
+
+app.listen(3000, () => {
+  console.log("LSP proxy server running on port 3000");
+});
