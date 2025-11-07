@@ -52,7 +52,7 @@ const Index = () => {
     }
     navigate(
       `/editor?room=${roomId.trim()}&name=${encodeURIComponent(
-        userName.trim()
+        userName.trim() 
       )}`
     );
   };

@@ -46,6 +46,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
+    "docker": "^1.0.0",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.1.0",
     "input-otp": "^1.4.2",
@@ -67,6 +68,7 @@
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
     "ws": "^8.18.3",
+    "yarn": "^1.22.22",
     "zod": "^3.25.76"
   },
   "devDependencies": {

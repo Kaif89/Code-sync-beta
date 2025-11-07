@@ -7,7 +7,7 @@ app.use(express.json());
 
 // Map of language server names to their host:port
 const languageServers = {
-  pylsp: { host: 'pylsp', port: 8081 },
+  pylsp: { host: 'pylsp', port: 2087 },
   clangd: { host: 'clangd', port: 8082 },
   gopls: { host: 'gopls', port: 8083 },
   jdtls: { host: 'jdtls', port: 8084 },
