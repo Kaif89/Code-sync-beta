@@ -1,6 +1,20 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Editor, { OnMount } from "@monaco-editor/react";
+import "@/monacoSetup";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+// Ensure Monaco registers additional languages beyond the defaults
+import "monaco-editor/esm/vs/basic-languages/python/python.contribution";
+import "monaco-editor/esm/vs/basic-languages/java/java.contribution";
+import "monaco-editor/esm/vs/basic-languages/go/go.contribution";
+import "monaco-editor/esm/vs/basic-languages/rust/rust.contribution";
+import "monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution";
+// Use C++ language definition for C, since Monaco does not ship a separate C
+import {
+  language as cppLanguage,
+  conf as cppConf,
+} from "monaco-editor/esm/vs/basic-languages/cpp/cpp";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +32,7 @@ import {
   Wifi,
   WifiOff,
   Play,
+  Download,
   MessageSquare,
   Terminal,
   Moon,
@@ -53,20 +68,87 @@ const LANGUAGES = [
   { value: "rust", label: "Rust" },
 ];
 
+const LANGUAGE_TEMPLATES: Record<string, string> = {
+  javascript: `// JavaScript
+console.log("hello how are u");
+`,
+  typescript: `// TypeScript
+function main(): void {
+  console.log("hello how are u");
+}
+main();
+`,
+  python: `# Python
+print("hello how are u")
+`,
+  java: `// Java
+public class Main {
+  public static void main(String[] args) {
+    System.out.println("hello how are u");
+  }
+}
+`,
+  cpp: `// C++
+#include <iostream>
+int main() {
+  std::cout << "hello how are u" << std::endl;
+  return 0;
+}
+`,
+  c: `// C
+#include <stdio.h>
+int main() {
+  printf("hello how are u\\n");
+  return 0;
+}
+`,
+  go: `// Go
+package main
+
+import "fmt"
+
+func main() {
+  fmt.Println("hello how are u")
+}
+`,
+  rust: `// Rust
+fn main() {
+    println!("hello how are u");
+}
+`,
+};
+
+const LANGUAGE_FILE_EXTENSIONS: Record<string, string> = {
+  javascript: "js",
+  typescript: "ts",
+  python: "py",
+  java: "java",
+  cpp: "cpp",
+  c: "c",
+  go: "go",
+  rust: "rs",
+};
+
 const COLORS = ["#00d9ff", "#ff006e", "#8338ec", "#fb5607", "#06ffa5"];
 
 export default function EditorPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const roomId = searchParams.get("room");
+  const isAdminInitial =
+    (searchParams.get("admin") || "").toLowerCase() === "true";
 
-  const [code, setCode] = useState("// Start coding together!\n\n");
+  const [code, setCode] = useState(
+    LANGUAGE_TEMPLATES["javascript"] || "// Start coding together!\n\n"
+  );
   const [language, setLanguage] = useState("javascript");
   const [users, setUsers] = useState<User[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [output, setOutput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [isError, setIsError] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(isAdminInitial);
   const [userName, setUserName] = useState(() => {
     const param = searchParams.get("name");
     if (param && param.trim()) {
@@ -144,6 +226,13 @@ export default function EditorPage() {
           toast.info(`Language changed to ${payload.language}`);
         }
       })
+      .on("broadcast", { event: "kick-user" }, ({ payload }) => {
+        const { userId } = payload as { userId: string };
+        if (userId === currentUser.id) {
+          toast.error("You have been removed by the admin");
+          navigate("/");
+        }
+      })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           setIsConnected(true);
@@ -159,7 +248,7 @@ export default function EditorPage() {
       channel.unsubscribe();
       setIsConnected(false);
     };
-  }, [roomId, currentUser, navigate]);
+  }, [roomId, currentUser, navigate, isAdmin]);
 
   const handleCodeChange = (value: string | undefined) => {
     if (value !== undefined && channelRef.current) {
@@ -184,6 +273,29 @@ export default function EditorPage() {
 
     // Initialize language server for the new language
     languageServerManager.initializeLanguageServer(newLanguage);
+
+    // Load a hello-world template for the chosen language
+    const template =
+      LANGUAGE_TEMPLATES[newLanguage as keyof typeof LANGUAGE_TEMPLATES] || "";
+    if (template) {
+      setCode(template);
+      if (channelRef.current) {
+        (channelRef.current as any).send({
+          type: "broadcast",
+          event: "code-change",
+          payload: { code: template, userId: currentUser.id },
+        });
+      }
+    }
+  };
+
+  const kickUser = (userId: string) => {
+    if (!isAdmin || !channelRef.current) return;
+    (channelRef.current as any).send({
+      type: "broadcast",
+      event: "kick-user",
+      payload: { userId },
+    });
   };
 
   const handleRunCode = async () => {
@@ -264,8 +376,66 @@ export default function EditorPage() {
       run: handlePaste,
     });
 
+    // Register 'c' language using C++ configuration if not already registered
+    try {
+      const existing = (monaco as any).languages
+        .getLanguages()
+        .map((l: any) => l.id);
+      if (!existing.includes("c")) {
+        (monaco as any).languages.register({ id: "c" });
+        (monaco as any).languages.setMonarchTokensProvider(
+          "c",
+          cppLanguage as any
+        );
+        (monaco as any).languages.setLanguageConfiguration("c", cppConf as any);
+      }
+    } catch {
+      // no-op: safe guard if monaco API shape changes
+    }
+
     // Initialize language server for the current language
     languageServerManager.initializeLanguageServer(language);
+  };
+
+  const handleExportCode = async () => {
+    try {
+      setIsExporting(true);
+      const zip = new JSZip();
+      const extension =
+        LANGUAGE_FILE_EXTENSIONS[
+          language as keyof typeof LANGUAGE_FILE_EXTENSIONS
+        ] || "txt";
+      const codeFileName = `codesync-session.${extension}`;
+      zip.file(codeFileName, code || "");
+
+      const metadata = [
+        "CodeSync Export",
+        `Language: ${language}`,
+        roomId ? `Room ID: ${roomId}` : undefined,
+        userName ? `Exported by: ${userName}` : undefined,
+        `Exported at: ${new Date().toISOString()}`,
+        "",
+        "Thanks for using CodeSync!",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      zip.file("README.txt", metadata);
+
+      if (output) {
+        zip.file("last-output.txt", output);
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const archiveName = `codesync-${language}-${Date.now()}.zip`;
+      saveAs(blob, archiveName);
+      toast.success("Code exported as ZIP");
+    } catch (error) {
+      console.error("Failed to export code", error);
+      toast.error("Unable to export code. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -323,7 +493,12 @@ export default function EditorPage() {
           <div className="flex items-center gap-6">
             <span className="text-sm font-medium text-muted-foreground">
               <span className="bg-secondary/80 py-1 px-3 rounded-lg">
-                👤 {userName}
+                👤 {userName}{" "}
+                {isAdmin && (
+                  <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                    Admin
+                  </span>
+                )}
               </span>
             </span>
             <Select value={language} onValueChange={handleLanguageChange}>
@@ -435,14 +610,29 @@ export default function EditorPage() {
                           boxShadow: `0 0 8px ${user.color}`,
                         }}
                       />
-                      <span className="text-sm font-medium truncate">
-                        {user.name}
-                        {user.id === currentUser.id && (
-                          <span className="text-xs text-muted-foreground ml-2">
-                            (You)
-                          </span>
-                        )}
-                      </span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate">
+                          {user.name}
+                          {user.id === currentUser.id && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              (You)
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
+                      {isAdmin && user.id !== currentUser.id && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => kickUser(user.id)}
+                            className="h-7 px-2"
+                          >
+                            Kick
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -463,6 +653,7 @@ export default function EditorPage() {
                   currentUserId={currentUser.id}
                   currentUserName={currentUser.name}
                   currentUserColor={currentUser.color}
+                  isAdmin={isAdmin}
                 />
               </TabsContent>
             </Tabs>
@@ -478,6 +669,16 @@ export default function EditorPage() {
           />
         </div>
       </div>
+
+      <Button
+        onClick={handleExportCode}
+        disabled={isExporting}
+        className="fixed bottom-6 right-6 gap-2 rounded-full bg-gradient-to-r from-primary to-primary/70 hover:from-primary/90 hover:to-primary shadow-xl ring-1 ring-primary/30 px-5 py-6"
+        size="lg"
+      >
+        <Download className="h-4 w-4" />
+        {isExporting ? "Exporting..." : "Export Code"}
+      </Button>
     </div>
   );
 }

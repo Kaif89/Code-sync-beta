@@ -8,7 +8,8 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lsp": "tsx server/lsp-bridge.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -49,11 +50,14 @@
     "docker": "^1.0.0",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.1.0",
+    "file-saver": "^2.0.5",
     "input-otp": "^1.4.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.462.0",
-    "monaco-editor": "^0.54.0",
+    "monaco-editor": "^0.53.0",
     "monaco-languageclient": "^10.2.0",
     "next-themes": "^0.3.0",
+    "pip": "^0.0.1",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
@@ -86,9 +90,10 @@
     "lovable-tagger": "^1.1.11",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
-    "vite": "^5.4.19"
+    "vite": "^7.2.2"
   },
   "description": "<h1>CodeSync – Real-Time Collaborative Code Editor</h1>",
   "main": "eslint.config.js",

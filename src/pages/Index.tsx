@@ -37,7 +37,9 @@ const Index = () => {
     const newRoomId = crypto.randomUUID();
     setRoomId(newRoomId);
     navigate(
-      `/editor?room=${newRoomId}&name=${encodeURIComponent(userName.trim())}`
+      `/editor?room=${newRoomId}&name=${encodeURIComponent(
+        userName.trim()
+      )}&admin=true`
     );
   };
 
@@ -52,7 +54,7 @@ const Index = () => {
     }
     navigate(
       `/editor?room=${roomId.trim()}&name=${encodeURIComponent(
-        userName.trim() 
+        userName.trim()
       )}`
     );
   };

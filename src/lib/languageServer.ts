@@ -127,7 +127,8 @@ class LanguageServerClient {
   async getCompletions(
     uri: string,
     position: monaco.IPosition,
-    context: monaco.languages.CompletionContext
+    context: monaco.languages.CompletionContext,
+    documentText: string
   ): Promise<monaco.languages.CompletionList> {
     if (!this.initialized) {
       throw new Error("Language server not initialized");
@@ -139,7 +140,7 @@ class LanguageServerClient {
         uri,
         languageId: this.language,
         version: 1,
-        text: "", // We'll need to get the actual text from the editor
+        text: documentText,
       },
     });
 
@@ -304,6 +305,8 @@ class LanguageServerManager {
   async initializeLanguageServer(language: string): Promise<void> {
     if (!LANGUAGE_SERVERS[language as keyof typeof LANGUAGE_SERVERS]) {
       console.warn(`No language server configured for ${language}`);
+      // Ensure at least a fallback provider exists
+      this.registerFallbackCompletionProvider(language);
       return;
     }
 
@@ -326,6 +329,8 @@ class LanguageServerManager {
         `Failed to initialize language server for ${language}:`,
         error
       );
+      // Register a fallback provider so users still get basic suggestions
+      this.registerFallbackCompletionProvider(language);
     }
   }
 
@@ -341,7 +346,8 @@ class LanguageServerManager {
       provideCompletionItems: async (model, position, context, token) => {
         try {
           const uri = model.uri.toString();
-          return await client.getCompletions(uri, position, context);
+          const text = model.getValue();
+          return await client.getCompletions(uri, position, context, text);
         } catch (error) {
           console.error(`Completion error for ${language}:`, error);
           return { suggestions: [] };
@@ -360,6 +366,62 @@ class LanguageServerManager {
     }
 
     this.registeredProviders.add(language);
+  }
+
+  // Basic, in-memory word-based completion as a fallback when LSP isn't available
+  private registerFallbackCompletionProvider(language: string): void {
+    if (this.registeredProviders.has(`${language}-fallback`)) {
+      return;
+    }
+
+    const provider: monaco.languages.CompletionItemProvider = {
+      provideCompletionItems: async (model, position) => {
+        const textUntilPosition = model.getValueInRange({
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        });
+
+        const word = model.getWordUntilPosition(position);
+        const range = new monaco.Range(
+          position.lineNumber,
+          word.startColumn,
+          position.lineNumber,
+          word.endColumn
+        );
+
+        const words = new Set<string>();
+        const identifierRegex = /[A-Za-z_][A-Za-z0-9_]*/g;
+        let match: RegExpExecArray | null;
+        // Collect words from the entire document for better suggestions
+        const fullText = model.getValue();
+        while ((match = identifierRegex.exec(fullText)) !== null) {
+          const w = match[0];
+          if (w.length >= 2) words.add(w);
+        }
+
+        const suggestions: monaco.languages.CompletionItem[] = Array.from(words)
+          .filter((w) => (word.word ? w.startsWith(word.word) : true))
+          .slice(0, 200)
+          .map((w) => ({
+            label: w,
+            kind: monaco.languages.CompletionItemKind.Text,
+            insertText: w,
+            range,
+          }));
+
+        return { suggestions };
+      },
+    };
+
+    monaco.languages.registerCompletionItemProvider(language, provider);
+    if (language === "cpp" || language === "c") {
+      monaco.languages.registerCompletionItemProvider("c", provider);
+      monaco.languages.registerCompletionItemProvider("cpp", provider);
+    }
+
+    this.registeredProviders.add(`${language}-fallback`);
   }
 
   getClient(language: string): LanguageServerClient | undefined {

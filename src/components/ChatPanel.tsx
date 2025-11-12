@@ -18,13 +18,15 @@ interface ChatPanelProps {
   currentUserId: string;
   currentUserName: string;
   currentUserColor: string;
+  isAdmin?: boolean;
 }
 
 export default function ChatPanel({ 
   roomId, 
   currentUserId, 
   currentUserName, 
-  currentUserColor 
+  currentUserColor,
+  isAdmin = false,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -121,12 +123,17 @@ export default function ChatPanel({
     setNewMessage("");
   };
 
+  const deleteMessage = async (id: string) => {
+    if (!isAdmin) return;
+    await supabase.from("chat_messages").delete().eq("id", id);
+  };
+
   return (
     <div className="flex flex-col h-full">
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         <div className="space-y-3">
           {messages.map((msg) => (
-            <div key={msg.id} className="flex gap-2">
+            <div key={msg.id} className="flex gap-2 group">
               <div
                 className="w-2 h-2 rounded-full mt-2 flex-shrink-0"
                 style={{
@@ -145,6 +152,16 @@ export default function ChatPanel({
                       minute: "2-digit",
                     })}
                   </span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => deleteMessage(msg.id)}
+                      className="ml-auto text-xs text-destructive/80 opacity-0 group-hover:opacity-100 transition-opacity underline"
+                      title="Delete message"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
                 <p className="text-sm text-foreground/90 break-words">
                   {msg.message}
